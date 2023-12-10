@@ -14,6 +14,10 @@
 #include <thread>
 #include <vector>
 #include <regex>
+#include <iostream>
+#include <codecvt>
+#include <locale>
+
 
 std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool add_bos) {
     auto * model = llama_get_model(ctx);
@@ -63,7 +67,7 @@ struct whisper_params {
     bool print_special  = false;
     bool print_energy   = false;
     bool no_timestamps  = true;
-    bool verbose_prompt = false;
+    bool verbose_prompt = true;
     bool use_gpu        = true;
 
     std::string person      = "Georgi";
@@ -224,6 +228,35 @@ std::string transcribe(
     return result;
 }
 
+bool contains_chinese(const std::string &str) {
+    std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> converter;
+    std::u32string u32str = converter.from_bytes(str);
+
+    for (char32_t ch : u32str) {
+        if ((ch >= 0x4E00 && ch <= 0x9FFF) ||   // Basic Chinese block
+            (ch >= 0x3400 && ch <= 0x4DBF) ||   // Extension A
+            (ch >= 0x20000 && ch <= 0x2A6DF) || // Extension B
+            (ch >= 0x2A700 && ch <= 0x2B73F) || // Extension C
+            (ch >= 0x2B740 && ch <= 0x2B81F) || // Extension D
+            (ch >= 0x2B820 && ch <= 0x2CEAF) || // Extension E
+            (ch >= 0x2CEB0 && ch <= 0x2EBEF) || // Extension F
+            (ch >= 0xF900 && ch <= 0xFAFF)) {   // Compatibility ideographs
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool contains_only_english(const std::string &str) {
+    for (char ch : str) {
+        if (!isalpha(ch) && !isdigit(ch) && !ispunct(ch) && !isspace(ch)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 const std::string k_prompt_whisper = R"(A conversation with a person called {1}.)";
 
 const std::string k_prompt_llama = R"(Text transcript of a never ending dialog, where {0} interacts with an AI assistant named {1}.
@@ -231,6 +264,8 @@ const std::string k_prompt_llama = R"(Text transcript of a never ending dialog, 
 There are no annotations like (30 seconds passed...) or (to himself), just what {0} and {1} say aloud to each other.
 The transcript only includes text, it does not include markup like HTML and Markdown.
 {1} responds with short and concise answers.
+If {0} says Chinese, then {1} responses in Chinese.
+If {0} says English, then {1} responses in English.
 
 {0}{4} Hello, {1}!
 {1}{4} Hello {0}! How may I help you today?
@@ -324,7 +359,7 @@ int main(int argc, char ** argv) {
     float prob0 = 0.0f;
 
     const std::string chat_symb = ":";
-    const std::string bot_name  = "LLaMA";
+    const std::string bot_name  = "Samantha";
 
     std::vector<float> pcmf32_cur;
     std::vector<float> pcmf32_prompt;
@@ -504,7 +539,10 @@ int main(int argc, char ** argv) {
                 }
 
                 // remove all characters, except for letters, numbers, punctuation and ':', '\'', '-', ' '
-                text_heard = std::regex_replace(text_heard, std::regex("[^a-zA-Z0-9\\.,\\?!\\s\\:\\'\\-]"), "");
+                //text_heard = std::regex_replace(text_heard, std::regex("[^a-zA-Z0-9\\.,\\?!\\s\\:\\'\\-]"), "");
+                // keep Chinese characters
+                text_heard = std::regex_replace(text_heard, std::regex("[^\\w\\s,.!?;:\\-\u4E00-\u9FFF]+"), "");
+
 
                 // take first line
                 text_heard = text_heard.substr(0, text_heard.find_first_of('\n'));
@@ -687,7 +725,9 @@ int main(int argc, char ** argv) {
                 }
 
                 text_to_speak = ::replace(text_to_speak, "'", "'\"'\"'");
-                int ret = system((params.speak + " " + std::to_string(voice_id) + " '" + text_to_speak + "'").c_str());
+                bool text_english_only = contains_only_english(text_to_speak);
+                std::string voice_character = text_english_only ? "-v 'Samantha (Enhanced)'" : " "; //'Meijia (Premium)'
+                int ret = system(("say " + voice_character + " '" + text_to_speak + "'").c_str());
                 if (ret != 0) {
                     fprintf(stderr, "%s: failed to speak\n", __func__);
                 }
