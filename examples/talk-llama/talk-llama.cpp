@@ -259,15 +259,8 @@ bool contains_only_english(const std::string &str) {
 
 const std::string k_prompt_whisper = R"(A conversation with a person called {1}.)";
 
-const std::string k_prompt_llama = R"(Text transcript of a never ending dialog, where {0} interacts with an AI assistant named {1}.
-{1} is helpful, kind, honest, friendly, good at writing and never fails to answer {0}’s requests immediately and with details and precision.
-There are no annotations like (30 seconds passed...) or (to himself), just what {0} and {1} say aloud to each other.
-The transcript only includes text, it does not include markup like HTML and Markdown.
-{1} responds with short and concise answers.
-If {0} says Chinese, then {1} responses in Chinese.
-If {0} says English, then {1} responses in English.
-
-{0}{4} Hello, {1}!
+//{1} responds with short and concise answers.
+/*{0}{4} Hello, {1}!
 {1}{4} Hello {0}! How may I help you today?
 {0}{4} What time is it?
 {1}{4} It is {2} o'clock.
@@ -277,7 +270,11 @@ If {0} says English, then {1} responses in English.
 {1}{4} A cat is a domestic species of small carnivorous mammal. It is the only domesticated species in the family Felidae.
 {0}{4} Name a color.
 {1}{4} Blue
-{0}{4})";
+{0}{4}*/
+const std::string k_prompt_llama = R"(Text transcript of a never ending dialog, where {0} interacts with an AI assistant named {1}.
+{1} is helpful, kind, honest, friendly, good at writing and never fails to answer {0}’s requests immediately and with details and precision.
+There are no annotations like (30 seconds passed...) or (to himself), just what {0} and {1} say aloud to each other.
+The transcript only includes text, it does not include markup like HTML and Markdown. Please answer in Chinese.)";
 
 int main(int argc, char ** argv) {
     whisper_params params;
@@ -725,8 +722,11 @@ int main(int argc, char ** argv) {
                 }
 
                 text_to_speak = ::replace(text_to_speak, "'", "'\"'\"'");
+
                 bool text_english_only = contains_only_english(text_to_speak);
-                std::string voice_character = text_english_only ? "-v 'Samantha (Enhanced)'" : " "; //'Meijia (Premium)'
+                // if enligsh only, use Samantha voice, otherwise use default voice
+                std::string voice_character = text_english_only ? "-v 'Samantha (Enhanced)'" : " ";
+
                 int ret = system(("say " + voice_character + " '" + text_to_speak + "'").c_str());
                 if (ret != 0) {
                     fprintf(stderr, "%s: failed to speak\n", __func__);
